@@ -5,6 +5,7 @@
 package etree
 
 import "testing"
+import "fmt"
 
 var testXML = `
 <?xml version="1.0" encoding="UTF-8"?>
@@ -150,9 +151,14 @@ var tests = []test{
 	{"//book/price[text()~'29.*']", "29.99"},
 	{"./bookstore/book/title[@lang~'e.'][@sku~'1.0']", "Harry Potter"},
 
+	// negative regexps
+	{"./bookstore/book[@category!~'W.*'][author!~'J .*']/title", "Everyday Italian"},
+	{"./bookstore/book[price!~'9']/price", "30.00"},
+
 	// bad regexps
 	{"./bookstore/book/title[@lang~'e[a-z]'][@sku~'1.0']", errorResult("etree: path has invalid filter [brackets].")},
 	{"./bookstore/book/title[@lang~'*e'][@sku~'1.0']", errorResult("etree: path has bad regexp *e")},
+	{"./bookstore/book/title[@lang!~'*e'][@sku~'1.0']", errorResult("etree: path has bad regexp *e")},
 }
 
 func TestPath(t *testing.T) {
@@ -185,6 +191,10 @@ func TestPath(t *testing.T) {
 		case string:
 			if element == nil || element.Text() != s ||
 				len(elements) != 1 || elements[0].Text() != s {
+				fmt.Printf("element: %#v\n", element)
+				if element != nil {
+					fmt.Printf("element.Text(): %s\n", element.Text())
+				}
 				fail(t, test)
 			}
 		case []string:

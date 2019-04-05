@@ -324,21 +324,30 @@ func (c *compiler) parseFilter(path string) filter {
 		}
 	}
 
-	// Filter contains [@attr~'regex'], [fn()~'regex'], or [tag~'regex']?
+	// Filter contains [@attr~'regex'], [fn()~'regex'], [tag~'regex'] or
+	// negative match [@attr!~'regex'], [fn()!~'regex'] or [tag!~'regex'] ?
 	regindex := strings.Index(path, "~'")
-	if regindex >= 0 {
-		rindex := nextIndex(path, "'", regindex+2)
+	negregindex := strings.Index(path, "!~'")
+	if regindex >= 0 || negregindex >= 0 {
+		rrindex := regindex
+		match := true
+		if negregindex >= 0 {
+			rrindex = negregindex + 1
+			regindex = negregindex
+			match = false
+		};
+		rindex := nextIndex(path, "'", rrindex+2)
 		if rindex != len(path)-1 {
 			c.err = ErrPath("path has mismatched filter quotes.")
 			return nil
 		}
 
 		key := path[:regindex]
-		value := path[regindex+2 : rindex]
+		value := path[rrindex+2 : rindex]
 
 		switch {
 		case key[0] == '@':
-			ret, err := newFilterAttrRegexp(key[1:], value)
+			ret, err := newFilterAttrRegexp(key[1:], value, match)
 			if err != nil {
 				c.err = ErrPath("path has bad regexp " + value)
 				return nil
@@ -347,7 +356,7 @@ func (c *compiler) parseFilter(path string) filter {
 		case strings.HasSuffix(key, "()"):
 			name := key[:len(key)-2]
 			if fn, ok := fnTable[name]; ok {
-				ret, err := newFilterFuncRegexp(fn, value)
+				ret, err := newFilterFuncRegexp(fn, value, match)
 				if err != nil {
 					c.err = ErrPath("path has bad regexp " + value)
 					return nil
@@ -357,7 +366,7 @@ func (c *compiler) parseFilter(path string) filter {
 			c.err = ErrPath("path has unknown function " + name)
 			return nil
 		default:
-			ret, err := newFilterChildRegexp(key, value)
+			ret, err := newFilterChildRegexp(key, value, match)
 			if err != nil {
 				c.err = ErrPath("path has bad regexp " + value)
 				return nil
@@ -627,12 +636,13 @@ func (f *filterChildText) apply(p *pather) {
 type filterChildRegexp struct {
 	space, tag string
 	re *regexp.Regexp
+	match bool
 }
 
-func newFilterChildRegexp(str, text string) (*filterChildRegexp, error) {
+func newFilterChildRegexp(str, text string, match bool) (*filterChildRegexp, error) {
 	s, l := spaceDecompose(str)
 	re, err := regexp.Compile(text)
-	return &filterChildRegexp{s, l, re}, err
+	return &filterChildRegexp{s, l, re, match}, err
 }
 
 func (f *filterChildRegexp) apply(p *pather) {
@@ -641,7 +651,7 @@ func (f *filterChildRegexp) apply(p *pather) {
 			if cc, ok := cc.(*Element); ok &&
 				spaceMatch(f.space, cc.Space) &&
 				f.tag == cc.Tag &&
-				f.re.MatchString(cc.Text()) {
+				f.re.MatchString(cc.Text()) == f.match {
 				p.scratch = append(p.scratch, c)
 			}
 		}
@@ -654,19 +664,20 @@ func (f *filterChildRegexp) apply(p *pather) {
 type filterAttrRegexp struct {
 	space, key string
 	re *regexp.Regexp
+	match bool
 }
 
-func newFilterAttrRegexp(str, pattern string) (*filterAttrRegexp, error) {
+func newFilterAttrRegexp(str, pattern string, match bool) (*filterAttrRegexp, error) {
 	s, l := spaceDecompose(str)
 	re, err := regexp.Compile(pattern)
-	return &filterAttrRegexp{s, l, re}, err
+	return &filterAttrRegexp{s, l, re, match}, err
 }
 
 func (f *filterAttrRegexp) apply(p *pather) {
 	for _, c := range p.candidates {
 		for _, a := range c.Attr {
 			if spaceMatch(f.space, a.Space) && f.key == a.Key &&
-				f.re.MatchString(a.Value) {
+				f.re.MatchString(a.Value) == f.match {
 				p.scratch = append(p.scratch, c)
 				break
 			}
@@ -680,17 +691,18 @@ func (f *filterAttrRegexp) apply(p *pather) {
 type filterFuncRegexp struct {
 	fn  func(e *Element) string
 	re *regexp.Regexp
+	match bool
 }
 
 func newFilterFuncRegexp(fn func(e *Element) string,
-	pattern string) (*filterFuncRegexp, error) {
+	pattern string, match bool) (*filterFuncRegexp, error) {
 	re, err := regexp.Compile(pattern)
-	return &filterFuncRegexp{fn, re}, err
+	return &filterFuncRegexp{fn, re, match}, err
 }
 
 func (f *filterFuncRegexp) apply(p *pather) {
 	for _, c := range p.candidates {
-		if f.re.MatchString(f.fn(c)) {
+		if f.re.MatchString(f.fn(c)) == f.match {
 			p.scratch = append(p.scratch, c)
 		}
 	}
