@@ -248,9 +248,24 @@ func splitPath(path string) []string {
 	return append(pieces, path[start:])
 }
 
+func splitSegment(path string) []string {
+	var pieces []string
+	start := 0
+	inquote := false
+	for i := 0; i+1 <= len(path); i++ {
+		if path[i] == '\'' {
+			inquote = !inquote
+		} else if path[i] == '[' && !inquote {
+			pieces = append(pieces, path[start:i])
+			start = i+1
+		}
+	}
+	return append(pieces, path[start:])
+}
+
 // parseSegment parses a path segment between / characters.
 func (c *compiler) parseSegment(path string) segment {
-	pieces := strings.Split(path, "[")
+	pieces := splitSegment(path)
 	seg := segment{
 		sel:     c.parseSelector(pieces[0]),
 		filters: []filter{},
