@@ -252,15 +252,23 @@ func splitSegment(path string) []string {
 	var pieces []string
 	start := 0
 	inquote := false
+	escaped := false
 	for i := 0; i+1 <= len(path); i++ {
 		if path[i] == '\'' {
 			inquote = !inquote
-		} else if path[i] == '[' && !inquote {
-			pieces = append(pieces, path[start:i])
-			start = i+1
+			escaped = false
+		} else if path[i] == '\\' {
+			escaped = true
+		} else if path[i] == '[' && !inquote && !escaped {
+			cleanpath := strings.Replace(strings.Replace(path[start:i], "\\[", "[", -1), "\\]", "]", -1)
+			pieces = append(pieces, cleanpath)
+			start = i + 1
+			escaped = false
 		}
 	}
-	return append(pieces, path[start:])
+
+	cleanpath := strings.Replace(strings.Replace(path[start:], "\\[", "[", -1), "\\]", "]", -1)
+	return append(pieces, cleanpath)
 }
 
 // parseSegment parses a path segment between / characters.
@@ -350,7 +358,7 @@ func (c *compiler) parseFilter(path string) filter {
 			rrindex = negregindex + 1
 			regindex = negregindex
 			match = false
-		};
+		}
 		rindex := nextIndex(path, "'", rrindex+2)
 		if rindex != len(path)-1 {
 			c.err = ErrPath("path has mismatched filter quotes.")
@@ -650,8 +658,8 @@ func (f *filterChildText) apply(p *pather) {
 // a child element with the specified tag and matching text.
 type filterChildRegexp struct {
 	space, tag string
-	re *regexp.Regexp
-	match bool
+	re         *regexp.Regexp
+	match      bool
 }
 
 func newFilterChildRegexp(str, text string, match bool) (*filterChildRegexp, error) {
@@ -678,8 +686,8 @@ func (f *filterChildRegexp) apply(p *pather) {
 // the specified attribute matching the specified value.
 type filterAttrRegexp struct {
 	space, key string
-	re *regexp.Regexp
-	match bool
+	re         *regexp.Regexp
+	match      bool
 }
 
 func newFilterAttrRegexp(str, pattern string, match bool) (*filterAttrRegexp, error) {
@@ -704,8 +712,8 @@ func (f *filterAttrRegexp) apply(p *pather) {
 // filterFuncRegexp filters the candidate list for elements containing a value
 // matching the result of a custom function.
 type filterFuncRegexp struct {
-	fn  func(e *Element) string
-	re *regexp.Regexp
+	fn    func(e *Element) string
+	re    *regexp.Regexp
 	match bool
 }
 
